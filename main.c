@@ -27,6 +27,7 @@ limitations under the License.
 #include <X11/Xutil.h>       // for XLookupString
 #include <X11/cursorfont.h>  // for XC_arrow
 #include <X11/keysym.h>      // for XK_BackSpace, XK_Tab, XK_o
+#include <X11/XF86keysym.h>  // for XF86XK_Audio*, XF86XK_Mon*...
 #include <fcntl.h>           // for fcntl, FD_CLOEXEC, F_GETFD
 #include <locale.h>          // for NULL, setlocale, LC_CTYPE
 #include <signal.h>          // for sigaction, raise, sa_handler
@@ -144,6 +145,8 @@ int force_grab = 0;
 int debug_window_info = 0;
 //! If nonnegative, the time in seconds till we blank the screen explicitly.
 int blank_timeout = -1;
+//! If set, pass a subset of XF86 media control keys to root window
+int pass_xf86_control_keys = 0;
 //! The DPMS state to switch the screen to when blanking.
 const char *blank_dpms_state = "off";
 //! Whether to reset the saver module when auth closes.
@@ -425,6 +428,7 @@ void LoadDefaults() {
   force_grab = GetIntSetting("XSECURELOCK_FORCE_GRAB", 0);
   debug_window_info = GetIntSetting("XSECURELOCK_DEBUG_WINDOW_INFO", 0);
   blank_timeout = GetIntSetting("XSECURELOCK_BLANK_TIMEOUT", 600);
+  pass_xf86_control_keys = GetIntSetting("XSECURELOCK_PASS_XF86_CONTROL_KEYS", 0);
   blank_dpms_state = GetStringSetting("XSECURELOCK_BLANK_DPMS_STATE", "off");
   saver_reset_on_auth_close =
       GetIntSetting("XSECURELOCK_SAVER_RESET_ON_AUTH_CLOSE", 0);
@@ -1322,6 +1326,31 @@ int main(int argc, char **argv) {
             }
             priv.buf[priv.len] = 0;
           } else {
+            if (pass_xf86_control_keys) {
+              unsigned long keysym = XLookupKeysym(&priv.ev.xkey, 0);
+
+              switch (keysym) {
+                case XF86XK_AudioPlay:
+                case XF86XK_AudioPause:
+                case XF86XK_AudioStop:
+                case XF86XK_AudioPrev:
+                case XF86XK_AudioNext:
+                case XF86XK_AudioMute:
+                case XF86XK_AudioLowerVolume:
+                case XF86XK_AudioRaiseVolume:
+                case XF86XK_MonBrightnessUp:
+                case XF86XK_MonBrightnessDown:
+                case XF86XK_PowerDown:
+                case XF86XK_PowerOff:
+                case XF86XK_Sleep:
+                  XSendEvent(display, root_window, 1, ButtonPressMask, &priv.ev);
+                  do_wake_up = 0;
+                  break;
+                default:
+                  break;
+              }
+            }
+
             // No new bytes. Fine.
             priv.buf[0] = 0;
             // We do check if something external wants to handle this key,
